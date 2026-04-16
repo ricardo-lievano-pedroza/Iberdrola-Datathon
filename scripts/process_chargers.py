@@ -23,6 +23,9 @@ def download_xml(url, output_path):
 
 def parse_xml(xml_path):
     """Parses the DGT Datex2 XML file and extracts relevant columns using Polars."""
+    if not os.path.exists(xml_path):
+        raise FileNotFoundError(f"XML file not found: {xml_path}")
+        
     print(f"Parsing {xml_path}...")
     tree = ET.parse(xml_path)
     root = tree.getroot()
@@ -85,30 +88,26 @@ def parse_xml(xml_path):
     return df
 
 def main(
-    url="https://infocar.dgt.es/datex2/v3/miterd/EnergyInfrastructureTablePublication/electrolineras.xml",
-    raw_xml_path="data/raw/charging_points/charging_points.xml",
+    raw_xml_path="data/raw/chargers/chargers.xml",
     parquet_output_path="data/processed/charging_points.parquet"
 ):
     # Ensure processed directory exists
     os.makedirs(os.path.dirname(parquet_output_path), exist_ok=True)
     
     try:
-        # 1. Download data
-        download_xml(url, raw_xml_path)
-        
-        # 2. Parse and generate DataFrame
+        # 1. Parse and generate DataFrame
         df = parse_xml(raw_xml_path)
         
-        # 3. Save as Parquet
+        # 2. Save as Parquet
         df.write_parquet(parquet_output_path)
         
-        print(f"\n--- Extraction Success ---")
+        print(f"\n--- Processing Success ---")
         print(f"Total sites: {len(df['site_id'].unique())}")
         print(f"Total connectors: {len(df)}")
         print(f"Processed file: {parquet_output_path}")
         
     except Exception as e:
-        print(f"\nFailed to extract EV data: {str(e)}")
+        print(f"\nFailed to process chargers data: {str(e)}")
         raise e # Re-raise to let orchestrator handle it
 
 if __name__ == "__main__":

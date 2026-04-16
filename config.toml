@@ -1,88 +1,77 @@
 # Iberdrola Datathon: Central Configuration File
 
-[execution]
-# Steps to run: ["all"] or a list like ["download", "capacity", "traffic"]
-# Available steps: download, charging, registrations, capacity, traffic, segments, proximity
-# Note: 'download' step fetches all raw data from external sources.
-steps = ["download", "proximity"]
-# If true, rerun all selected steps even if output files exist
+[download_execution]
+# Steps: ["all"] or list like ["roads", "traffic"]
+# Order: roads, traffic, vehicle_registrations, chargers, electric_capacity, gas_stations
+steps = ["all"]
+force = false
+
+[process_execution]
+# Available steps: chargers, vehicle_registrations, gas_stations, electric_capacity, traffic, segments, proximity, gas_stations_proximity
+steps = ["electric_capacity", "traffic"]
 force = true
 
-[steps.download]
-# 1. EV Charging Points (XML)
-charging_url = "https://infocar.dgt.es/datex2/v3/miterd/EnergyInfrastructureTablePublication/electrolineras.xml"
-charging_raw_path = "data/raw/charging_points/charging_points.xml"
-charging_output_path = "data/processed/charging_points.parquet"
+# ==========================================
+# STEP DEFINITIONS (Processing Parameters)
+# ==========================================
 
-# 2. EV Registrations (ZIPs)
-registrations_raw_dir = "data/raw/ev/zip"
-registrations_output_path = "data/processed/ev_registrations.parquet"
-registrations_ano_inicio = 2015
-registrations_mes_inicio = 1
-registrations_ano_fin = 2025
-registrations_mes_fin = 12
+[steps.roads]
+# Acquisition details moved to download.py
 
-# 3. Electric Capacity (XLSX)
-capacity_raw_dir = "data/raw/electric_capacity"
-capacity_datasets = [
-    { label = "Iberdrola", url = "https://www.i-de.es/documents/d/guest/2026_04_01_r1-001_demanda-1-", filename = "Iberdrola_2026_04_01.xlsx" },
-    { label = "Endesa", url = "https://www.edistribucion.com/content/dam/edistribucion/conexion-a-la-red/descargables/nodos/generacion/202604/2026_04_01_R1299_generación.xlsx", filename = "Endesa_2026_04_01.xlsx" },
-    { label = "Viesgo", url = "https://storage.googleapis.com/apdes-prd-interactivemap-resources/network-capacity-map/v2/viesgo/doc_generation/2026_04_01_R1005_generacion.xlsx", filename = "Viesgo_2026_04_01.xlsx" }
-]
-
-# 4. Roads Network (KMZ)
-roads_kmz_url = "https://mapas.fomento.gob.es/arcgis2/rest/services/Hermes/0_CARRETERAS/MapServer/19/query?where=GEOM%20is%20not%20null&outFields=*&f=kmz"
-roads_kmz_path = "data/raw/roads/query.kmz"
-
-# 5. Road Routes (Geometry & Traffic)
-road_routes_raw_dir = "data/raw/road_routes"
-road_routes_geom_url = "https://movilidad-opendata.mitma.es/estudios_rutas/geometria/Geometria_tramos_2023_2024/Geometria_tramos"
-road_routes_info_url = "https://movilidad-opendata.mitma.es/estudios_rutas/informacion_tramo/"
-road_routes_info_files = [
-    "20240331_Tramos_info_odmatrix.csv.gz",
-    "20240824_Tramos_info_odmatrix.csv.gz",
-    "20240827_Tramos_info_odmatrix.csv.gz",
-    "20241016_Tramos_info_odmatrix.csv.gz",
-    "20241019_Tramos_info_odmatrix.csv.gz"
-]
-
-[steps.charging]
-# This step now only handles processing, download is in download step
-raw_path = "data/raw/charging_points/charging_points.xml"
-output_path = "data/processed/charging_points.parquet"
+[steps.traffic]
+# Data sources
+raw_dir = "data/raw/traffic/informacion_tramo"
+output_path = "data/standardized/traffic.parquet"
 depends_on = []
 
-[steps.registrations]
-raw_dir = "data/raw/ev/zip"
-output_path = "data/processed/ev_registrations.parquet"
+[steps.vehicle_registrations]
+# Acquisition parameters
+ano_inicio = 2015
+mes_inicio = 1
+ano_fin = 2025
+mes_fin = 12
+# Paths
+raw_dir = "data/raw/vehicle_registrations"
+output_path = "data/standardized/vehicle_registrations.parquet"
 depends_on = []
 
-[steps.capacity]
+[steps.chargers]
+raw_path = "data/raw/chargers/chargers.xml"
+output_path = "data/standardized/chargers.parquet"
+depends_on = []
+
+[steps.electric_capacity]
 raw_dir = "data/raw/electric_capacity"
-output_path = "data/processed/electric_capacity_merged.parquet"
+output_path = "data/standardized/electric_capacity.parquet"
 files = { Endesa = "Endesa_2026_04_01.xlsx", Iberdrola = "Iberdrola_2026_04_01.xlsx", Viesgo = "Viesgo_2026_04_01.xlsx" }
 depends_on = []
 
-[steps.traffic]
-raw_dir = "data/raw/road_routes/informacion_tramo"
-output_path = "data/processed/road_routes_traffic.parquet"
+[steps.gas_stations]
+raw_path = "data/raw/gas_stations/gas_stations.json"
+output_path = "data/standardized/gas_stations.parquet"
 depends_on = []
 
 [steps.segments]
-shp_path = "data/raw/road_routes/geometria/Geometria_tramos.shp"
-traffic_path = "data/processed/road_routes_traffic.parquet"
-kmz_path = "data/raw/roads/query.kmz"
+shp_path = "data/raw/traffic/geometria/Geometria_tramos.shp"
+traffic_path = "data/standardized/traffic.parquet"
+kmz_path = "data/raw/roads/roads.kmz"
 output_path = "data/processed/integrated_road_network.parquet"
 backbone_output_path = "data/processed/backbone_roads.parquet"
 small_segment_length_m = 2000
-bridge_gap_threshold_m = 1000
-parallel_threshold_m = 100
-depends_on = ["data/processed/road_routes_traffic.parquet"]
+depends_on = ["data/standardized/traffic.parquet"]
 
 [steps.proximity]
-charging_points_path = "data/processed/charging_points.parquet"
+charging_points_path = "data/standardized/chargers.parquet"
 road_network_path = "data/processed/integrated_road_network.parquet"
 backbone_roads_path = "data/processed/backbone_roads.parquet"
 output_path = "data/processed/charging_stations.parquet"
 max_distance = 1000
-depends_on = ["data/processed/charging_points.parquet", "data/processed/integrated_road_network.parquet", "data/processed/backbone_roads.parquet"]
+depends_on = ["data/standardized/chargers.parquet", "data/processed/integrated_road_network.parquet", "data/processed/backbone_roads.parquet"]
+
+[steps.gas_stations_proximity]
+raw_path = "data/standardized/gas_stations.parquet"
+road_network_path = "data/processed/integrated_road_network.parquet"
+backbone_roads_path = "data/processed/backbone_roads.parquet"
+output_path = "data/processed/gas_stations_proximity.parquet"
+max_distance = 1000
+depends_on = ["data/standardized/gas_stations.parquet", "data/processed/integrated_road_network.parquet", "data/processed/backbone_roads.parquet"]

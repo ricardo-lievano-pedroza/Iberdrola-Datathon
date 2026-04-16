@@ -109,10 +109,10 @@ def process_backbone_group(bib_id, group, backbone_geom, traffic_cols,
     return consolidated
 
 def main(
-    shp_path="./data/raw/road_routes/geometria/Geometria_tramos.shp",
-    traffic_path="./data/processed/road_routes_traffic.parquet",
-    kmz_path="./data/raw/roads/query.kmz",
-    output_path="./data/processed/integrated_road_network.parquet",
+    shp_path="data/raw/traffic/geometria/Geometria_tramos.shp",
+    traffic_path="data/processed/road_routes_traffic.parquet",
+    kmz_path="data/raw/roads/roads.kmz",
+    output_path="data/processed/integrated_road_network.parquet",
     backbone_output_path="./data/processed/backbone_roads.parquet",
     small_segment_length_m=2000,
     fusion_small_segment_m=1000,
@@ -151,11 +151,30 @@ def main(
     # 2. BACKBONE PROCESSING
     print("Processing KMZ backbones...")
     gdf_backbone = gpd.read_file(kmz_path, driver='KML')
+    
+    # Extract attributes from HTML description
+    gdf_backbone["route_segment"] = gdf_backbone["description"].str.extract(
+        r"<td>Carretera</td>\s*<td>([^<]+)</td>", expand=False
+    )
+    gdf_backbone["tipo_via"] = gdf_backbone["description"].str.extract(
+        r"<td>Tipo_de_via</td>\s*<td>([^<]+)</td>", expand=False
+    )
+    gdf_backbone["pk_inicio"] = pd.to_numeric(
+        gdf_backbone["description"].str.extract(r"<td>PK_inicio</td>\s*<td>([^<]+)</td>", expand=False), 
+        errors="coerce"
+    )
+    gdf_backbone["pk_fin"] = pd.to_numeric(
+        gdf_backbone["description"].str.extract(r"<td>PK_fin</td>\s*<td>([^<]+)</td>", expand=False), 
+        errors="coerce"
+    )
+
     gdf_backbone = gdf_backbone.to_crs(gdf_segments.crs)
     gdf_backbone['length_m'] = gdf_backbone.geometry.length
     gdf_backbone = gdf_backbone[gdf_backbone['length_m'] >= small_segment_length_m].copy()
-    gdf_backbone['backbone_id'] = range(len(gdf_backbone))
-    gdf_backbone = gdf_backbone[['backbone_id', 'geometry', 'length_m']]
+    gdf_backbone = gdf_backbone.rename(columns={'id': 'backbone_id'})
+    
+    # Keep extracted columns in the final selection
+    gdf_backbone = gdf_backbone[['backbone_id', 'geometry', 'length_m', 'route_segment', 'tipo_via', 'pk_inicio', 'pk_fin']]
     
     os.makedirs(os.path.dirname(backbone_output_path), exist_ok=True)
     gdf_backbone.to_parquet(backbone_output_path)

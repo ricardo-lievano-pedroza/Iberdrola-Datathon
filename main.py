@@ -7,15 +7,14 @@ from pathlib import Path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'scripts'))
 
 try:
-    import download_ev_charging_points
-    import download_ev_registrations
-    import download_electric_capacity
-    import download_roads_kmz
-    import download_road_routes
+    import process_chargers
+    import process_vehicle_registrations
+    import process_gas_stations
     import process_electric_capacity
     import merge_traffic_data
     import process_road_segments
     import analyze_charging_sites_proximity
+    import analyze_gas_stations_proximity
 except ImportError as e:
     print(f"Error importing scripts: {e}")
     sys.exit(1)
@@ -43,7 +42,7 @@ def run_step(step_name, config, force=False):
     dependencies = step_config.get('depends_on', [])
     for dep in dependencies:
         if not os.path.exists(dep):
-            print(f"ERROR: Prerequisite missing for '{step_name}'. Please run the step that generates: {dep}")
+            print(f"ERROR: Prerequisite missing for '{step_name}'. Please ensure raw data is downloaded and prior steps are run. Missing: {dep}")
             return False
 
     # 2. Smart Skipping Logic
@@ -55,50 +54,22 @@ def run_step(step_name, config, force=False):
     print(f"\n>>> Executing Step: {step_name}")
     
     try:
-        if step_name == "download":
-            # 1. Roads Network KMZ
-            download_roads_kmz.main(
-                url=step_config['roads_kmz_url'],
-                output_path=step_config['roads_kmz_path']
-            )
-            # 2. Electric Capacity
-            download_electric_capacity.main(
-                datasets=step_config['capacity_datasets']
-            )
-            # 3. Road Routes
-            download_road_routes.main(
-                base_dir=step_config['road_routes_raw_dir'],
-                geom_url_base=step_config['road_routes_geom_url'],
-                info_url_base=step_config['road_routes_info_url'],
-                info_files=step_config['road_routes_info_files']
-            )
-            # 4. EV Charging Points
-            download_ev_charging_points.main(
-                url=step_config['charging_url'],
-                raw_xml_path=step_config['charging_raw_path'],
-                parquet_output_path=step_config['charging_output_path']
-            )
-            # 5. EV Registrations
-            download_ev_registrations.main(
-                ano_inicio=step_config['registrations_ano_inicio'],
-                mes_inicio=step_config['registrations_mes_inicio'],
-                ano_fin=step_config.get('registrations_ano_fin'),
-                mes_fin=step_config.get('registrations_mes_fin'),
-                dir_zip=step_config['registrations_raw_dir'],
-                output_parquet=step_config['registrations_output_path']
-            )
-        elif step_name == "charging":
-            # Note: Charging download+process is currently bundled in the script's main
-            download_ev_charging_points.main(
+        if step_name == "chargers":
+            process_chargers.main(
                 raw_xml_path=step_config['raw_path'],
                 parquet_output_path=step_config['output_path']
             )
-        elif step_name == "registrations":
-            download_ev_registrations.main(
+        elif step_name == "vehicle_registrations":
+            process_vehicle_registrations.main(
                 dir_zip=step_config['raw_dir'],
                 output_parquet=step_config['output_path']
             )
-        elif step_name == "capacity":
+        elif step_name == "gas_stations":
+            process_gas_stations.main(
+                raw_path=step_config['raw_path'],
+                output_path=step_config['output_path']
+            )
+        elif step_name == "electric_capacity":
             process_electric_capacity.main(
                 raw_dir=step_config['raw_dir'],
                 output_path=step_config['output_path'],
@@ -126,6 +97,14 @@ def run_step(step_name, config, force=False):
                 output_path=step_config['output_path'],
                 max_distance=step_config['max_distance']
             )
+        elif step_name == "gas_stations_proximity":
+            analyze_gas_stations_proximity.main(
+                raw_path=step_config['raw_path'],
+                road_network_path=step_config['road_network_path'],
+                backbone_roads_path=step_config['backbone_roads_path'],
+                output_path=step_config['output_path'],
+                max_distance=step_config['max_distance']
+            )
         else:
             print(f"Error: Manual glue-code for step '{step_name}' is missing in main.py.")
             return False
@@ -136,44 +115,51 @@ def run_step(step_name, config, force=False):
         return False
 
 def main():
-    """Main orchestrator entry point."""
-    print("=== Iberdrola Datathon: Data Orchestrator (TOML-Configured) ===\n")
+    """Main orchestrator entry point for processing."""
+    print("=== Iberdrola Datathon: Data Processing Orchestrator ===\n")
     
     config = load_config()
     
-    # Read execution settings from the Single Source of Truth
-    execution = config.get('execution', {})
+    # Read execution settings
+    execution = config.get('process_execution', config.get('execution', {}))
     steps_requested = execution.get('steps', ["all"])
     force_run = execution.get('force', False)
 
-    # Definitive order of steps
-    canonical_order = ["download", "charging", "registrations", "capacity", "traffic", "segments", "proximity"]
+    # Definitive order of processing steps
+    canonical_order = [
+        "chargers", 
+        "vehicle_registrations", 
+        "gas_stations",
+        "electric_capacity", 
+        "traffic", 
+        "segments", 
+        "proximity", 
+        "gas_stations_proximity"
+    ]
     
-    # Resolve which steps to run
     if "all" in steps_requested:
         steps_to_run = canonical_order
     else:
-        # We preserve canonical order even if user lists them out of order in config
         steps_to_run = [s for s in canonical_order if s in steps_requested]
         
-        # Check for user typos in step names
+        # Check for user typos
         invalid = [s for s in steps_requested if s not in canonical_order and s != "all"]
         if invalid:
             print(f"Warning: Disregarding unknown step names found in config: {invalid}")
 
     if not steps_to_run:
-        print("No valid steps selected for execution. Check [execution].steps in config.toml")
+        print("No valid processing steps selected for execution.")
         return
 
-    print(f"Configured Sequence: {', '.join(steps_to_run)}")
-    print(f"Global Force Flag: {force_run}")
+    print(f"Sequence: {', '.join(steps_to_run)}")
+    print(f"Force Flag: {force_run}")
 
     for step in steps_to_run:
         if not run_step(step, config, force=force_run):
             print(f"\nPipeline ABORTED at step: {step}")
             sys.exit(1)
 
-    print("\n=== All configured tasks finished successfully ===")
+    print("\n=== All processing tasks finished successfully ===")
 
 if __name__ == "__main__":
     main()

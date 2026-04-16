@@ -5,8 +5,8 @@ import re
 import sys
 
 def main(
-    input_dir="./data/raw/road_routes/informacion_tramo",
-    output_path="./data/processed/road_routes_traffic.parquet"
+    input_dir="data/raw/traffic/informacion_tramo",
+    output_path="data/processed/road_routes_traffic.parquet"
 ):
     """
     Consolidates traffic data from multiple daily CSV files into a single Parquet file.

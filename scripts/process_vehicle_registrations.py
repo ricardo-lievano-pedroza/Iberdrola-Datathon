@@ -32,44 +32,6 @@ DGT_FIELDS = [
     [68, 'CODIGO_ECO_ITV', 25], [69, 'FEC_PROCESO', 8]
 ]
 
-def volcado_masivo(ano_inicio, mes_inicio, ano_fin, mes_fin, ruta):
-    """Downloads monthly ZIP files from DGT site."""
-    print(f"Comenzamos volcado de ficheros (Direct Link) en {ruta}:")
-    
-    # Ensure directory exists
-    os.makedirs(ruta, exist_ok=True)
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-
-    for ano in range(ano_inicio, ano_fin + 1):
-        for mes in range(1, 13):
-            if (ano == ano_inicio and mes >= mes_inicio) or (ano == ano_fin and mes <= mes_fin) or (ano_inicio < ano < ano_fin):
-                
-                mes_pad = str(mes).zfill(2)
-                url = f"https://www.dgt.es/microdatos/salida/{ano}/{mes}/vehiculos/matriculaciones/export_mensual_mat_{ano}{mes_pad}.zip"
-
-                nombre_archivo = f"{ano}_{mes_pad}.zip"
-                ruta_archivo = os.path.join(ruta, nombre_archivo)
-                
-                # Check if already exists to avoid redundant downloads
-                if os.path.exists(ruta_archivo):
-                    print(f"  - '{nombre_archivo}' (Skipped - already exists)")
-                    continue
-
-                try:
-                    response = requests.get(url, headers=headers, timeout=15)
-                    
-                    if response.status_code == 200:
-                        with open(ruta_archivo, "wb") as file:
-                            file.write(response.content)
-                        print(f"  - '{nombre_archivo}' (OK)")
-                    else:
-                        print(f"  - Error en {ano}_{mes_pad}: Status {response.status_code}")
-                except Exception as e:
-                    print(f"  - Error de conexión en {ano}_{mes_pad}: {e}")
-
 def process_zip_to_consolidated_parquet(dir_zip, campos, output_file, columns=None):
     """
     Combines decompression and fixed-width split into a single Polars pipeline.
@@ -129,7 +91,7 @@ def process_zip_to_consolidated_parquet(dir_zip, campos, output_file, columns=No
             print(f"  - Error procesando {zip_name}: {e}")
 
     if all_dataframes:
-        print("Concatenando dataframes y guardando...")
+        print("Concatenando dataframes and guardando...")
         final_df = pl.concat(all_dataframes)
         
         # Ensure output directory exists
@@ -143,22 +105,10 @@ def process_zip_to_consolidated_parquet(dir_zip, campos, output_file, columns=No
         return None
 
 def main(
-    ano_inicio=2015, 
-    mes_inicio=1, 
-    ano_fin=None, 
-    mes_fin=None, 
-    dir_zip="data/raw/ev/zip", 
+    dir_zip="data/raw/vehicle_registrations", 
     output_parquet="data/processed/ev_registrations.parquet"
 ):
-    if ano_fin is None:
-        ano_fin = datetime.now().year
-    if mes_fin is None:
-        mes_fin = datetime.now().month
-
-    # 1. Download
-    volcado_masivo(ano_inicio, mes_inicio, ano_fin, mes_fin, dir_zip)
-
-    # 2. Process
+    # Process
     process_zip_to_consolidated_parquet(dir_zip, DGT_FIELDS, output_parquet)
 
 if __name__ == "__main__":
