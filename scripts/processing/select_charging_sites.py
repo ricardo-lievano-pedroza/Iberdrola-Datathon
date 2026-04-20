@@ -5,12 +5,20 @@ import math
 
 
 def size_site(aadt, ev_share=0.15, avg_session_min=20.0,
-              peak_hour_frac=0.10, utilization=0.40,
-              kw_per_stall=200, min_stalls=4, headroom=0.15):
-    """Return (stalls, site_kw) for a given AADT under assumed EV-share scenario."""
-    peak_ev_per_hour = aadt * ev_share * peak_hour_frac
+              peak_hour_frac=0.10, trip_charge_frac=0.15,
+              utilization=0.40, kw_per_stall=200,
+              min_stalls=4, max_stalls=20, headroom=0.15):
+    """
+    Return (stalls, site_kw) for a given AADT.
+
+    Only a fraction of EVs passing actually stop to charge mid-trip
+    (trip_charge_frac, typically 10-20%). Sites are also capped at
+    max_stalls; excess demand is served by the next site along the corridor.
+    """
+    peak_ev_needing_charge = aadt * ev_share * peak_hour_frac * trip_charge_frac
     sessions_per_stall_per_hour = 60.0 / avg_session_min * utilization
-    stalls = max(min_stalls, math.ceil(peak_ev_per_hour / sessions_per_stall_per_hour))
+    raw_stalls = math.ceil(peak_ev_needing_charge / sessions_per_stall_per_hour)
+    stalls = max(min_stalls, min(max_stalls, raw_stalls))
     site_kw = stalls * kw_per_stall * (1.0 + headroom)
     return stalls, site_kw
 
